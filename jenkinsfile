@@ -22,7 +22,7 @@ pipeline {
             post {
                 failure {
                     sh '''#!/bin/bash
-                        export GEMINI_API_KEY="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"
+                        export LLM_API_KEY="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"
                         if [ -f pipeline.log ]; then
                             echo "=== TRIGGERING AI AGENT FOR TRIAGE ==="
                             python3 script/ai_agent_remediate.py pipeline.log || true
