@@ -19,7 +19,6 @@ if not os.path.exists(LOG_FILE):
 with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
     logs = "".join(f.readlines()[-120:])
 
-# Read pom.xml content if it exists to allow direct self-healing
 pom_content = ""
 if os.path.exists("pom.xml"):
     with open("pom.xml", "r", encoding="utf-8") as pf:
@@ -40,8 +39,8 @@ Task:
 1. Identify the root cause of failure.
 2. If the issue is fixable in repository files (e.g., 'pom.xml' Java version, plugin version, typo):
    - Set "can_auto_heal": true
-   - Set "target_file": relative file path to patch (e.g., "pom.xml")
-   - Set "updated_file_content": complete valid file content for the target file with the fix applied.
+   - Set "target_file": "pom.xml"
+   - Set "updated_file_content": full updated content for pom.xml with the fix applied (e.g. changing jdk.version from 1.6 to 1.8).
 3. If it is a missing system package:
    - Set "can_auto_heal": true
    - Set "system_command": "sudo apt install -y ..."
@@ -63,7 +62,7 @@ headers = {
     "Authorization": f"Bearer {API_KEY}"
 }
 
-# Auto-detect available Groq model
+# Fetch available Groq models
 model = "llama-3.1-8b-instant"
 try:
     models_resp = requests.get("https://api.groq.com/openai/v1/models", headers=headers, timeout=5)
@@ -103,27 +102,28 @@ try:
     print(f"Explanation:      {data.get('explanation')}")
     print("-" * 65)
 
-    # Autonomous Self-Healing Execution
     if data.get("can_auto_heal"):
-        # 1. System tool installation
-        if data.get("system_command"):
-            cmd = data.get("system_command")
-            print(f"[Auto-Healing] Executing system remediation: {cmd}")
-            subprocess.run(cmd, shell=True, check=False)
-
-        # 2. Source file auto-patching
         target_file = data.get("target_file")
         updated_content = data.get("updated_file_content")
         if target_file and updated_content and len(updated_content.strip()) > 20:
             print(f"[Auto-Healing] Overwriting and fixing '{target_file}'...")
             with open(target_file, "w", encoding="utf-8") as tf:
                 tf.write(updated_content)
-            print(f"[Auto-Healing] '{target_file}' patched successfully!")
+            print(f"[Auto-Healing] '{target_file}' patched successfully locally!")
+
+            # Git Auto-Commit & Push back to GitHub
+            try:
+                print("[Auto-Healing] Pushing fix to remote GitHub repository...")
+                subprocess.run("git config user.name 'AI Auto-Healing Agent'", shell=True, check=True)
+                subprocess.run("git config user.email 'ai-agent@cloudops.internal'", shell=True, check=True)
+                subprocess.run(f"git add {target_file}", shell=True, check=True)
+                subprocess.run("git commit -m 'fix(ci): autonomous patch applied by AI agent'", shell=True, check=True)
+                subprocess.run("git push origin master", shell=True, check=True)
+                print("[Auto-Healing] Changes successfully pushed to GitHub!")
+            except Exception as ge:
+                print(f"[Auto-Healing Warning] Git push failed: {ge}")
 
     print("=" * 65 + "\n")
 
-    with open("ai_triage_report.json", "w", encoding="utf-8") as out:
-        out.write(json.dumps(data, indent=2))
-
 except Exception as e:
-    print(f"[AI Agent Warning] Auto-healing execution error: {e}")
+    print(f"[AI Agent Warning] Error: {e}")
