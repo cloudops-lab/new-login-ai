@@ -28,7 +28,7 @@ pipeline {
                         git config user.name "Chandandhani"
                         git config user.email "ai-agent@cloudops.internal"
 
-                        # 1. Attempt initial build on master
+                        # 1. Attempt initial build on master (mvn1 triggers triage)
                         if mvn1 clean install package 2>&1 | tee pipeline.log; then
                             echo "=== BUILD SUCCEEDED ==="
                         else
@@ -37,12 +37,13 @@ pipeline {
                             # 2. Checkout feature branch from master
                             git checkout -B "${BRANCH_NAME}" origin/master
 
-                            # 3. Patch pom.xml and call GitHub PR API directly from Python
+                            # 3. Dynamic AI Agent patches files and creates PR
                             export GIT_PASS="${GIT_PASS}"
+                            export BRANCH_NAME="${BRANCH_NAME}"
                             python3 script/ai_agent_remediate.py pipeline.log
 
-                            # 4. Commit and push the feature branch to GitHub
-                            git add pom.xml
+                            # 4. Stage and push ALL patched files (including Jenkinsfile)
+                            git add -A
                             git commit -m "fix(ci): autonomous patch applied by AI agent" || echo "No diff to commit"
                             git push "${AUTH_REPO}" "${BRANCH_NAME}" --force
                             echo "=== PUSHED ${BRANCH_NAME} TO GITHUB ==="
