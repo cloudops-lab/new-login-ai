@@ -8,7 +8,7 @@ API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("LLM_API_KEY")
 LOG_FILE = sys.argv[1] if len(sys.argv) > 1 else "pipeline.log"
 
 if not API_KEY:
-    print("Error: Neither GEMINI_API_KEY nor LLM_API_KEY environment variable is set.")
+    print("Error: No API key set.")
     sys.exit(1)
 
 if not os.path.exists(LOG_FILE):
@@ -26,26 +26,29 @@ Analyze the following Jenkins failure logs:
 ---
 Task:
 1. Identify the root cause.
-2. If the failure is due to a missing tool or typo (e.g., 'mvn1: not found'), state the fix.
-3. Provide the exact shell command to install or resolve it if applicable.
+2. If it is a missing OS package (e.g., 'mvn: not found'), provide the apt/yum install command in 'system_cmd'.
+3. If it is a typo or syntax error in a repository file (e.g., 'mvn1' in Jenkinsfile), specify:
+   - 'target_file': relative path of the file to fix (e.g., 'Jenkinsfile' or 'jenkinsfile')
+   - 'search_string': exact wrong text
+   - 'replace_string': correct replacement text
 
 Respond ONLY with a valid JSON object matching this schema:
 {{
   "cause": "Short summary",
-  "missing_tool": true,
-  "remediation_cmd": "exact bash command to fix or empty string",
-  "explanation": "concise explanation"
+  "explanation": "concise explanation",
+  "is_system_dependency": true or false,
+  "system_cmd": "bash install command or empty",
+  "target_file": "file name or empty",
+  "search_string": "text to replace or empty",
+  "replace_string": "replacement text or empty"
 }}
 """
 
-# Using gemini-3.1-flash-lite on v1beta
 url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={API_KEY}"
 headers = {"Content-Type": "application/json"}
 
 payload = {
-    "contents": [{
-        "parts": [{"text": prompt}]
-    }],
+    "contents": [{"parts": [{"text": prompt}]}],
     "generationConfig": {
         "response_mime_type": "application/json",
         "temperature": 0.1
@@ -57,7 +60,7 @@ try:
     resp_json = response.json()
 
     if response.status_code != 200:
-        print(f"Gemini API Error ({response.status_code}): {resp_json.get('error', resp_json)}")
+        print(f"Gemini API Error: {resp_json}")
         sys.exit(1)
 
     raw_text = resp_json["candidates"][0]["content"]["parts"][0]["text"]
@@ -66,13 +69,29 @@ try:
     print("\n================ [AI AGENT TRIAGE] ================")
     print(f"Root Cause:     {data.get('cause')}")
     print(f"Explanation:    {data.get('explanation')}")
-    print(f"Suggested Fix:  {data.get('remediation_cmd')}")
     print("===================================================\n")
 
-    if data.get("missing_tool") and data.get("remediation_cmd"):
-        cmd = data.get("remediation_cmd")
-        print(f"[AI Self-Healing] Executing detected fix: {cmd}")
-        subprocess.run(cmd, shell=True, check=False)
+    # 1. System Dependency Self-Healing
+    if data.get("is_system_dependency") and data.get("system_cmd"):
+        cmd = data.get("system_cmd")
+        print(f"[AI Self-Healing] Installing missing system tool: {cmd}")
+        subprocess.run(f"sudo {cmd}", shell=True, check=False)
+
+    # 2. Code/Jenkinsfile Self-Healing
+    target_file = data.get("target_file")
+    search_str = data.get("search_string")
+    replace_str = data.get("replace_string")
+
+    if target_file and os.path.exists(target_file) and search_str:
+        print(f"[AI Self-Healing] Patching file '{target_file}': replacing '{search_str}' with '{replace_str}'")
+        with open(target_file, "r") as f:
+            content = f.read()
+        
+        new_content = content.replace(search_str, replace_str)
+        with open(target_file, "w") as f:
+            f.write(new_content)
+            
+        print("[AI Self-Healing] File patched successfully.")
 
     with open("ai_triage.json", "w") as out:
         out.write(raw_text)
