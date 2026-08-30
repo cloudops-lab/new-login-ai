@@ -16,7 +16,7 @@ pipeline {
             steps {
                 sh '''#!/bin/bash
                     set -o pipefail
-                    mvn1 clean install package deploy 2>&1 | tee pipeline.log
+                    mvn clean install package deploy 2>&1 | tee pipeline.log
                 '''
             }
             post {
