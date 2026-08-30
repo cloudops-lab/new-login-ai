@@ -1,13 +1,13 @@
 import os
 import sys
 import json
-from google import genai
+import requests
 
-API_KEY = os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv("LLM_API_KEY")
 LOG_FILE = sys.argv[1] if len(sys.argv) > 1 else "pipeline.log"
 
 if not API_KEY:
-    print("[AI Agent Error] GEMINI_API_KEY environment variable is not set.")
+    print("[AI Agent Error] LLM_API_KEY environment variable is not set.")
     sys.exit(0)
 
 if not os.path.exists(LOG_FILE):
@@ -24,9 +24,9 @@ Analyze the following Jenkins failure logs:
 {logs}
 ---
 Instructions:
-1. Identify the primary root cause.
-2. Determine which layer failed (e.g., Syntax/Typo, Missing System Dependency, Maven/Build Error, Unit Test Failure, Authentication/Permission).
-3. Provide the exact step-by-step fix, including code changes or shell commands needed to resolve the issue.
+1. Identify the primary root cause (e.g., Maven compiler error, missing package, shell typo).
+2. Explain why it failed clearly.
+3. Provide the exact step-by-step fix, including code/pom.xml changes or commands.
 
 Respond ONLY with a valid JSON object matching this schema:
 {{
@@ -37,28 +37,39 @@ Respond ONLY with a valid JSON object matching this schema:
 }}
 """
 
+url = "https://api.groq.com/openai/v1/chat/completions"
+headers = {
+    "Content-Type": "application/json",
+    "Authorization": f"Bearer {API_KEY}"
+}
+
+payload = {
+    "model": "llama-3.3-70b-versatile",
+    "messages": [{"role": "user", "content": prompt}],
+    "response_format": {"type": "json_object"},
+    "temperature": 0.1
+}
+
 try:
-    client = genai.Client(api_key=API_KEY)
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt,
-        config={
-            "response_mime_type": "application/json",
-            "temperature": 0.1,
-        }
-    )
+    response = requests.post(url, headers=headers, json=payload, timeout=30)
+    resp_json = response.json()
 
-    data = json.loads(response.text)
+    if response.status_code != 200:
+        print(f"[AI Agent Error] API returned status {response.status_code}: {resp_json}")
+        sys.exit(0)
 
-    print("\n" + "=" * 60)
+    raw_text = resp_json["choices"][0]["message"]["content"]
+    data = json.loads(raw_text)
+
+    print("\n" + "=" * 65)
     print("           🤖 AI AGENT CI/CD TRIAGE & REMEDIATION")
-    print("=" * 60)
+    print("=" * 65)
     print(f"Error Category:   {data.get('error_category')}")
     print(f"Root Cause:       {data.get('root_cause')}")
     print(f"Explanation:      {data.get('explanation')}")
-    print("-" * 60)
+    print("-" * 65)
     print(f"Recommended Fix:\n{data.get('recommended_fix')}")
-    print("=" * 60 + "\n")
+    print("=" * 65 + "\n")
 
     with open("ai_triage_report.json", "w") as out:
         out.write(json.dumps(data, indent=2))
