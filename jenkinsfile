@@ -46,36 +46,46 @@ pipeline {
                             git push "${AUTH_REPO}" "${BRANCH_NAME}" --force
                             echo "=== PUSHED ${BRANCH_NAME} TO GITHUB ==="
 
-                            # 5. Build PR JSON Payload using Python to prevent JSON/Escaping errors
-                            python3 -c "
+                            # 5. Safely generate PR JSON payload without backtick escaping conflicts
+                            cat << 'EOF' > make_pr.py
+import os
 import json
+import requests
+
+git_pass = os.getenv("GIT_PASS")
+branch_name = "feature-ai-fix"
+repo_url = "https://api.github.com/repos/cloudops-lab/new-login-ai/pulls"
+
 payload = {
-    'title': 'fix(ci): Auto-healing patch (Java Version Fix)',
-    'head': '${BRANCH_NAME}',
-    'base': 'master',
-    'body': '### 🤖 AI Agent CI/CD Remediation\\n\\n- **Cause:** Maven compiler JDK compatibility error (Java 6 unsupported).\\n- **Remediation:** Upgraded project \`<jdk.version>\` to \`1.8\` in \`pom.xml\`.\\n\\nPlease review and approve this PR.'
+    "title": "fix(ci): Auto-healing patch (Java Version Fix)",
+    "head": branch_name,
+    "base": "master",
+    "body": "### AI Agent CI/CD Remediation\n\n- **Cause:** Maven compiler JDK compatibility error (Java 6 unsupported).\n- **Remediation:** Upgraded project jdk.version to 1.8 in pom.xml.\n\nPlease review and approve this PR."
 }
-with open('pr_payload.json', 'w') as f:
-    json.dump(payload, f)
-"
 
-                            # 6. Create Pull Request (source: feature-ai-fix, target: master)
-                            PR_RESPONSE=$(curl -s -X POST \
-                              -H "Authorization: token ${GIT_PASS}" \
-                              -H "Accept: application/vnd.github.v3+json" \
-                              https://api.github.com/repos/cloudops-lab/new-login-ai/pulls \
-                              -d @pr_payload.json)
+headers = {
+    "Authorization": f"token {git_pass}",
+    "Accept": "application/vnd.github.v3+json"
+}
 
-                            PR_URL=$(echo "${PR_RESPONSE}" | grep -o '"html_url": *"[^"]*"' | head -n 1 | cut -d '"' -f 4)
+try:
+    resp = requests.post(repo_url, headers=headers, json=payload, timeout=20)
+    pr_data = resp.json()
+    pr_url = pr_data.get("html_url")
 
-                            echo "======================================================="
-                            if [ -n "${PR_URL}" ]; then
-                                echo "🚀 PULL REQUEST READY: ${PR_URL}"
-                            else
-                                echo "ℹ️ Pull Request already exists: https://github.com/cloudops-lab/new-login-ai/pulls"
-                            fi
-                            echo "👉 Please review and merge the PR into master."
-                            echo "======================================================="
+    print("=======================================================")
+    if pr_url:
+        print(f"PULL REQUEST READY: {pr_url}")
+    else:
+        print("Pull Request already open or updated: https://github.com/cloudops-lab/new-login-ai/pulls")
+    print("Please review and merge the PR into master.")
+    print("=======================================================")
+except Exception as e:
+    print(f"Failed to create PR: {e}")
+EOF
+
+                            # 6. Execute PR generation
+                            python3 make_pr.py
 
                             exit 1
                         fi
