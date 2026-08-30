@@ -22,7 +22,7 @@ pipeline {
                     sh '''#!/bin/bash
                         set -o pipefail
 
-                        AUTH_REPO="https://${GIT_USER}:${GIT_PASS}@github.com/cloudops-lab/loginapp.git"
+                        AUTH_REPO="https://${GIT_USER}:${GIT_PASS}@github.com/cloudops-lab/new-login-ai.git"
                         BRANCH_NAME="ai-fix-${BUILD_NUMBER}"
 
                         git config user.name "Chandandhani"
