@@ -1,55 +1,39 @@
 pipeline {
-   agent {
-       label 'slave'
-   }
-   tools {
-     maven "maven"  
-   }
-   environment {
-       scannerHome = tool 'sonar scaner'
-               //This can be nexus 3 or Nexus 2
-        NEXUS_VERSION= "nexus3"
-        //This can be http or https
-        NEXUS_PROTOCOL= "http"
-        //Where your Nexus is running
-        NEXUS_URL= "192.168.56.40:8081"
-        // Repository Name where we will upload the artifacts
-        NEXUS_REPOSITORY= "nexus-repo"
-        // Jenkins credentials id to authenticate to Nexus OSS
-        NEXUS_CREDENTIAL_ID= "nexus-creds"
-   }
+    agent {
+        label 'dev'
+    }
 
-   stages {
-      stage('Git Checkout') {
-         steps {
-            git 'https://github.com/Rashmi-devops/loginapp.git'   
-         }
-      }
-    stage('Static code Analisys'){
-      steps {
-           withSonarQubeEnv('sonar server') {
-            /*sh "${scannerHome}/bin/sonar-scanner -Dsonar.sourceEncoding=UTF-8 -Dsonar.projectKey=testpipeline -Dsonar.projectName=testpipeline -Dsonar.projectVersion=1.0"*/
-            sh "mvn sonar:sonar"
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'master',
+                    credentialsId: 'git_creds',
+                    url: 'https://github.com/cloudops-lab/loginapp.git'
+            }
         }
-      }    
-        
+
+        stage('Build & Test') {
+            steps {
+                sh '''#!/bin/bash
+                    set -o pipefail
+                    mvn1 clean install package 2>&1 | tee pipeline.log
+                '''
+            }
+            post {
+                failure {
+                    sh '''
+                        if [ -f pipeline.log ]; then
+                            echo "=== TRIGGERING AI AGENT FOR TRIAGE ==="
+                            python3 scripts/ai_agent_remediate.py pipeline.log || true
+                        fi
+                    '''
+                }
+            }
+        }
     }
-    stage ('Maven Goal'){
-      steps {
-         sh "mvn clean install package" 
-      }    
+    post {
+        always {
+            cleanWs(deleteDirs: true, notFailBuild: true)
+        }
     }
-    stage ('Deploying Artifact'){
-      steps {
-        sh "mvn deploy"
-       }
-     }
-    stage ('Ansible Tower'){
-       steps {
-         ansiColor('xterm') {
-          ansibleTower async: false, credential: '', extraVars: '', importTowerLogs: true, importWorkflowChildLogs: false, inventory: '', jobTags: '', jobTemplate: 'tomcat-job', jobType: 'run', limit: '', removeColor: false, skipJobTags: '', templateType: 'job', throwExceptionWhenFail: false, towerCredentialsId: 'Tower-Creds', towerServer: 'Ansible Tower', verbose: false
-}  
-       }    
-    }
-   }
-   }
+}
