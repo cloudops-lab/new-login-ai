@@ -61,7 +61,7 @@ with open('pr_payload.json', 'w') as f:
                             PR_RESPONSE=$(curl -s -X POST \
                               -H "Authorization: token ${GIT_PASS}" \
                               -H "Accept: application/vnd.github.v3+json" \
-                              https://api.github.com/repos/cloudops-lab/loginapp/pulls \
+                              https://Chandandhani@github.com/cloudops-lab/new-login-ai/pulls \
                               -d @pr_payload.json)
 
                             PR_URL=$(echo "${PR_RESPONSE}" | grep -o '"html_url": *"[^"]*"' | head -n 1 | cut -d '"' -f 4)
