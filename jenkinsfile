@@ -21,7 +21,8 @@ pipeline {
             }
             post {
                 failure {
-                    sh '''
+                    sh '''#!/bin/bash
+                        export GEMINI_API_KEY="AQ.Ab8RN6KMnStfgANwujxZEUreju75TfclWQdzVHzTIBpPhuGxCQ"
                         if [ -f pipeline.log ]; then
                             echo "=== TRIGGERING AI AGENT FOR TRIAGE ==="
                             python3 script/ai_agent_remediate.py pipeline.log || true
