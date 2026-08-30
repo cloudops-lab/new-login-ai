@@ -4,11 +4,11 @@ import subprocess
 import json
 import requests
 
-API_KEY = os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("LLM_API_KEY")
 LOG_FILE = sys.argv[1] if len(sys.argv) > 1 else "pipeline.log"
 
 if not API_KEY:
-    print("Error: Not finding GEMINI_API_KEY API_KEY")
+    print("Error: Neither GEMINI_API_KEY nor LLM_API_KEY environment variable is set.")
     sys.exit(1)
 
 if not os.path.exists(LOG_FILE):
@@ -26,7 +26,7 @@ Analyze the following Jenkins failure logs:
 ---
 Task:
 1. Identify the root cause.
-2. If the failure is due to a missing tool or typo (e.g., 'mvn1: not found'), state the fix.
+2. If the failure is due to a missing tool or typo (e.g., 'mvn1: not found'), state the fix clearly.
 3. Provide the exact shell command to install or resolve it if applicable.
 
 Respond ONLY with a valid JSON object matching this schema:
@@ -38,8 +38,8 @@ Respond ONLY with a valid JSON object matching this schema:
 }}
 """
 
-# Pass the key strictly in the URL query string
-url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+# Use v1 endpoint with gemini-2.5-flash or gemini-1.5-flash-latest
+url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY}"
 headers = {"Content-Type": "application/json"}
 
 payload = {
@@ -55,6 +55,12 @@ payload = {
 try:
     response = requests.post(url, headers=headers, json=payload, timeout=30)
     resp_json = response.json()
+
+    # Fallback to v1 gemini-1.5-flash-latest if v1beta returns error
+    if response.status_code != 200:
+        fallback_url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+        response = requests.post(fallback_url, headers=headers, json=payload, timeout=30)
+        resp_json = response.json()
 
     if response.status_code != 200:
         print(f"Gemini API Error ({response.status_code}): {resp_json.get('error', resp_json)}")
