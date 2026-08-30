@@ -4,6 +4,7 @@ import json
 import requests
 
 API_KEY = os.getenv("GEMINI_API_KEY")
+print(API_KEY)
 LOG_FILE = sys.argv[1] if len(sys.argv) > 1 else "pipeline.log"
 
 if not API_KEY:
