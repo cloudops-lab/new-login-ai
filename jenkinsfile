@@ -16,59 +16,65 @@ pipeline {
             }
         }
 
-        stage('Build & AI Auto-Healing PR') {
+        stage('Build & Auto-Healing PR') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'git_creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
                     sh '''#!/bin/bash
                         set -o pipefail
 
                         AUTH_REPO="https://${GIT_USER}:${GIT_PASS}@github.com/cloudops-lab/new-login-ai.git"
-                        BRANCH_NAME="ai-fix-${BUILD_NUMBER}"
+                        BRANCH_NAME="feature-ai-fix"
 
                         git config user.name "Chandandhani"
                         git config user.email "ai-agent@cloudops.internal"
 
-                        # 1. Attempt the build
+                        # 1. Attempt the initial build on master
                         if mvn clean install package 2>&1 | tee pipeline.log; then
                             echo "=== BUILD SUCCEEDED ==="
                         else
-                            echo "=== BUILD FAILED: INITIATING AI AGENT AUTO-HEAL ==="
+                            echo "=== BUILD FAILED: CREATING FIXED FEATURE BRANCH & PR ==="
 
-                            # 2. Run AI agent to patch pom.xml
+                            # 2. Checkout or reset feature-ai-fix cleanly from origin/master
+                            git checkout -B "${BRANCH_NAME}" origin/master
+
+                            # 3. Run AI agent to diagnose and patch pom.xml
                             python3 script/ai_agent_remediate.py pipeline.log
 
-                            # 3. Create unique branch and push to GitHub
-                            git checkout -b "${BRANCH_NAME}"
+                            # 4. Commit and push the fix to feature-ai-fix
                             git add pom.xml
-                            git commit -m "fix(ci): autonomous patch by AI agent for build #${BUILD_NUMBER}"
+                            git commit -m "fix(ci): autonomous patch applied by AI agent" || echo "No new diff to commit"
                             git push "${AUTH_REPO}" "${BRANCH_NAME}" --force
                             echo "=== PUSHED ${BRANCH_NAME} TO GITHUB ==="
 
-                            # 4. Generate PR payload safely via Python to avoid shell escape issues
+                            # 5. Build PR JSON Payload using Python to prevent JSON/Escaping errors
                             python3 -c "
 import json
 payload = {
-    'title': 'fix(ci): Auto-healing patch for Build #${BUILD_NUMBER}',
+    'title': 'fix(ci): Auto-healing patch (Java Version Fix)',
     'head': '${BRANCH_NAME}',
     'base': 'master',
-    'body': '### AI Agent CI/CD Remediation Report\\n\\n- **Cause:** Maven compiler JDK compatibility error (Java 6 unsupported).\\n- **Remediation:** Upgraded project jdk.version to 1.8 in pom.xml.\\n\\nPlease review and merge this PR.'
+    'body': '### 🤖 AI Agent CI/CD Remediation\\n\\n- **Cause:** Maven compiler JDK compatibility error (Java 6 unsupported).\\n- **Remediation:** Upgraded project \`<jdk.version>\` to \`1.8\` in \`pom.xml\`.\\n\\nPlease review and approve this PR.'
 }
 with open('pr_payload.json', 'w') as f:
     json.dump(payload, f)
 "
 
-                            # 5. Create Pull Request on GitHub
+                            # 6. Create Pull Request (source: feature-ai-fix, target: master)
                             PR_RESPONSE=$(curl -s -X POST \
                               -H "Authorization: token ${GIT_PASS}" \
                               -H "Accept: application/vnd.github.v3+json" \
-                              https://Chandandhani@github.com/cloudops-lab/new-login-ai/pulls \
+                              https://api.github.com/repos/cloudops-lab/new-login-ai/pulls \
                               -d @pr_payload.json)
 
                             PR_URL=$(echo "${PR_RESPONSE}" | grep -o '"html_url": *"[^"]*"' | head -n 1 | cut -d '"' -f 4)
 
                             echo "======================================================="
-                            echo " PULL REQUEST CREATED: ${PR_URL}"
-                            echo " Please visit GitHub and approve the PR to apply changes."
+                            if [ -n "${PR_URL}" ]; then
+                                echo "🚀 PULL REQUEST READY: ${PR_URL}"
+                            else
+                                echo "ℹ️ Pull Request already exists: https://github.com/cloudops-lab/new-login-ai/pulls"
+                            fi
+                            echo "👉 Please review and merge the PR into master."
                             echo "======================================================="
 
                             exit 1
