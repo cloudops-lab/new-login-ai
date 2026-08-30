@@ -28,8 +28,8 @@ pipeline {
                         git config user.name "Chandandhani"
                         git config user.email "ai-agent@cloudops.internal"
 
-                        # 1. Attempt initial build on master (mvn1 triggers triage)
-                        if mvn1 clean install package 2>&1 | tee pipeline.log; then
+                        # 1. Attempt initial build on master (mvn triggers triage)
+                        if mvn clean install package 2>&1 | tee pipeline.log; then
                             echo "=== BUILD SUCCEEDED ==="
                         else
                             echo "=== BUILD FAILED: CREATING FIXED FEATURE BRANCH & PR ==="
