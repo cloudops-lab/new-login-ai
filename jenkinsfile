@@ -3,10 +3,6 @@ pipeline {
         label 'dev'
     }
 
-    environment {
-        GEMINI_API_KEY = 'AQ.Ab8RN6IQQTdCAKVKa7scLRly3nAMlyoGw7udeB0B63jcHSm2RQ'
-    }
-
     stages {
         stage('Checkout') {
             steps {
