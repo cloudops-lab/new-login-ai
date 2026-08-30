@@ -18,7 +18,7 @@ if not os.path.exists(LOG_FILE):
 # Read the last 150 lines where failure stacktraces occur
 with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
     logs = "".join(f.readlines()[-150:])
-print("line 21",logs)
+
 prompt = f"""
 You are an expert Autonomous DevOps CI/CD AI Agent.
 Analyze the following Jenkins failure logs:
