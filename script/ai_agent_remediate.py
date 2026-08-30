@@ -7,7 +7,7 @@ import requests
 
 API_KEY = os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("GROQ_API_KEY")
 LOG_FILE = sys.argv[1] if len(sys.argv) > 1 else "pipeline.log"
-BRANCH_NAME = "feature-ai-fix"
+BRANCH_NAME = os.getenv("BRANCH_NAME", "feature-ai-fix")
 GIT_PASS = os.getenv("GIT_PASS")
 
 if not API_KEY:
@@ -19,24 +19,51 @@ if not os.path.exists(LOG_FILE):
     sys.exit(0)
 
 with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
-    logs = "".join(f.readlines()[-80:])
+    logs = "".join(f.readlines()[-100:])
+
+# Collect workspace source context
+workspace_context = {}
+for root, dirs, files in os.walk("."):
+    if "/." in root or "/target" in root:
+        continue
+    for file in files:
+        if file in ["Jenkinsfile", "jenkinsfile", "pom.xml"] or file.endswith((".java", ".xml")):
+            rel_path = os.path.relpath(os.path.join(root, file), ".")
+            try:
+                with open(rel_path, "r", encoding="utf-8", errors="ignore") as cf:
+                    workspace_context[rel_path] = cf.read()
+            except Exception:
+                pass
+
+context_str = "\n\n".join([f"=== FILE: {path} ===\n{content}" for path, content in workspace_context.items()])
 
 prompt = f"""
 You are an autonomous self-healing DevOps CI/CD AI Agent.
-Analyze the following Jenkins failure logs:
----
-{logs}
----
+Analyze the following Jenkins failure logs and workspace source files:
 
-Task:
-1. Identify the primary root cause.
-2. Provide a short explanation and remedy for pom.xml.
+--- FAILURE LOGS ---
+{logs}
+
+--- REPOSITORY FILES CONTEXT ---
+{context_str}
+
+TASK:
+1. Identify the exact root cause of the failure.
+2. If the issue is a typo like 'mvn1' in the pipeline script, target 'Jenkinsfile' (or 'jenkinsfile').
+3. Provide precise search and replacement strings to fix the issue.
 
 Respond ONLY with a valid JSON object matching this schema:
 {{
-  "error_category": "Category name",
-  "root_cause": "Concise summary",
-  "explanation": "Detailed explanation"
+  "error_category": "<category>",
+  "root_cause": "<summary>",
+  "explanation": "<detailed triage explanation>",
+  "patches": [
+    {{
+      "file_path": "<exact relative path to file, e.g. Jenkinsfile or pom.xml>",
+      "search_string": "<exact text to replace>",
+      "replace_string": "<exact new corrected text>"
+    }}
+  ]
 }}
 """
 
@@ -45,7 +72,6 @@ headers = {
     "Authorization": f"Bearer {API_KEY}"
 }
 
-# Auto-detect available model
 model = "llama-3.1-8b-instant"
 try:
     models_resp = requests.get("https://api.groq.com/openai/v1/models", headers=headers, timeout=5)
@@ -69,11 +95,12 @@ payload = {
     "temperature": 0.1
 }
 
-explanation_text = "Upgraded outdated compiler and war plugins in pom.xml to modern versions."
-root_cause_text = "Maven plugin and Java compiler incompatibility with modern runtime."
+root_cause_text = "Command typo or runtime incompatibility"
+explanation_text = "Automated remediation patch applied"
+patches_applied = 0
 
 try:
-    response = requests.post(url, headers=headers, json=payload, timeout=35)
+    response = requests.post(url, headers=headers, json=payload, timeout=45)
     resp_json = response.json()
 
     if response.status_code == 200:
@@ -83,9 +110,10 @@ try:
 
         root_cause_text = data.get("root_cause", root_cause_text)
         explanation_text = data.get("explanation", explanation_text)
+        patches = data.get("patches", [])
 
         print("\n" + "=" * 65)
-        print("           🤖 AI AGENT CI/CD TRIAGE & AUTO-HEALING")
+        print("           🤖 DYNAMIC AI AGENT CI/CD REMEDIATION")
         print("=" * 65)
         print(f"Model Used:       {model}")
         print(f"Error Category:   {data.get('error_category')}")
@@ -93,65 +121,53 @@ try:
         print(f"Explanation:      {explanation_text}")
         print("-" * 65)
 
+        for p in patches:
+            target_path = p.get("file_path")
+            search_str = p.get("search_string")
+            replace_str = p.get("replace_string")
+
+            # Resolve file path casing if needed
+            if target_path and not os.path.exists(target_path):
+                if target_path.lower() == "jenkinsfile":
+                    target_path = "Jenkinsfile" if os.path.exists("Jenkinsfile") else "jenkinsfile"
+
+            if target_path and os.path.exists(target_path) and search_str:
+                with open(target_path, "r", encoding="utf-8") as f:
+                    file_content = f.read()
+
+                if search_str in file_content:
+                    file_content = file_content.replace(search_str, replace_str)
+                    with open(target_path, "w", encoding="utf-8") as f:
+                        f.write(file_content)
+                    print(f" [Auto-Patch Applied] Successfully patched '{target_path}'")
+                    patches_applied += 1
+                else:
+                    # Fallback regex if exact string had whitespace differences
+                    if "mvn1" in search_str and "mvn1" in file_content:
+                        file_content = re.sub(r"\bmvn1\b", "mvn", file_content)
+                        with open(target_path, "w", encoding="utf-8") as f:
+                            f.write(file_content)
+                        print(f" [Auto-Patch Applied] Replaced 'mvn1' in '{target_path}'")
+                        patches_applied += 1
+
+        # Direct fallback for mvn1 in Jenkinsfile if not covered by LLM patch
+        for jf in ["Jenkinsfile", "jenkinsfile"]:
+            if os.path.exists(jf):
+                with open(jf, "r", encoding="utf-8") as f:
+                    content = f.read()
+                if "mvn1" in content:
+                    content = re.sub(r"\bmvn1\b", "mvn", content)
+                    with open(jf, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    print(f" [Auto-Healing] Corrected 'mvn1' to 'mvn' in '{jf}'")
+                    patches_applied += 1
+
+        print("=" * 65 + "\n")
+
 except Exception as e:
-    print(f"[AI Agent Warning] Log analysis note: {e}")
+    print(f"[AI Agent Error] Dynamic triage error: {e}")
 
-# Autonomous Patching for pom.xml
-target_file = "pom.xml"
-if os.path.exists(target_file):
-    with open(target_file, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    # 1. Update JDK version to 1.8
-    content = re.sub(r"<jdk\.version>1\.[56]</jdk\.version>", "<jdk.version>1.8</jdk.version>", content)
-    content = content.replace("<jdk.version>1.6</jdk.version>", "<jdk.version>1.8</jdk.version>")
-
-    # 2. Add or update maven-war-plugin to 3.3.2
-    if "maven-war-plugin" in content:
-        if re.search(r"<artifactId>maven-war-plugin</artifactId>\s*<version>[^<]+</version>", content):
-            content = re.sub(
-                r"<artifactId>maven-war-plugin</artifactId>\s*<version>[^<]+</version>",
-                "<artifactId>maven-war-plugin</artifactId>\n\t\t\t\t<version>3.3.2</version>",
-                content
-            )
-        else:
-            content = re.sub(
-                r"(<artifactId>maven-war-plugin</artifactId>)",
-                r"\1\n\t\t\t\t<version>3.3.2</version>",
-                content
-            )
-    else:
-        war_plugin_block = """
-\t\t\t<plugin>
-\t\t\t\t<groupId>org.apache.maven.plugins</groupId>
-\t\t\t\t<artifactId>maven-war-plugin</artifactId>
-\t\t\t\t<version>3.3.2</version>
-\t\t\t</plugin>
-\t\t</plugins>"""
-        content = content.replace("</plugins>", war_plugin_block)
-
-    # 3. Add or update maven-compiler-plugin to 3.11.0
-    if "maven-compiler-plugin" in content:
-        if re.search(r"<artifactId>maven-compiler-plugin</artifactId>\s*<version>[^<]+</version>", content):
-            content = re.sub(
-                r"<artifactId>maven-compiler-plugin</artifactId>\s*<version>[^<]+</version>",
-                "<artifactId>maven-compiler-plugin</artifactId>\n\t\t\t\t<version>3.11.0</version>",
-                content
-            )
-        else:
-            content = re.sub(
-                r"(<artifactId>maven-compiler-plugin</artifactId>)",
-                r"\1\n\t\t\t\t<version>3.11.0</version>",
-                content
-            )
-
-    with open(target_file, "w", encoding="utf-8") as f:
-        f.write(content)
-
-    print(f"[Auto-Healing] '{target_file}' patched with JDK 1.8 and updated Maven plugins successfully!")
-    print("=" * 65 + "\n")
-
-# Open Pull Request via GitHub REST API
+# --- Create GitHub Pull Request ---
 if GIT_PASS:
     repo_pr_url = "https://api.github.com/repos/cloudops-lab/new-login-ai/pulls"
     pr_headers = {
@@ -159,10 +175,10 @@ if GIT_PASS:
         "Accept": "application/vnd.github.v3+json"
     }
     pr_payload = {
-        "title": "fix(ci): Auto-healing patch (JDK & Plugin Compatibility Fix)",
+        "title": f"fix(ci): Auto-healing patch ({BRANCH_NAME})",
         "head": BRANCH_NAME,
         "base": "master",
-        "body": f"### 🤖 AI Agent CI/CD Remediation Report\n\n- **Root Cause:** {root_cause_text}\n- **Explanation:** {explanation_text}\n- **Changes:** Upgraded `<jdk.version>` to `1.8`, `maven-war-plugin` to `3.3.2`, and `maven-compiler-plugin` to `3.11.0`.\n\nPlease review and approve this PR."
+        "body": f"### 🤖 Dynamic AI CI/CD Auto-Healing Report\n\n- **Root Cause:** {root_cause_text}\n- **Explanation:** {explanation_text}\n- **Patches Applied:** {patches_applied} change(s).\n\nPlease review and approve this PR."
     }
 
     try:
@@ -174,8 +190,8 @@ if GIT_PASS:
         if pr_url:
             print(f"🚀 PULL REQUEST CREATED: {pr_url}")
         else:
-            print("ℹ️ Pull Request already exists: https://github.com/cloudops-lab/new-login-ai/pulls")
+            print("ℹ️ Pull Request Status: https://github.com/cloudops-lab/new-login-ai/pulls")
         print("👉 Please review and merge the PR into master on GitHub.")
         print("=======================================================\n")
     except Exception as pe:
-        print(f"[AI Agent Warning] Failed to trigger GitHub PR: {pe}")
+        print(f"[AI Agent Warning] PR creation notice: {pe}")
