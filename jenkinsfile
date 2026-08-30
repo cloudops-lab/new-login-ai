@@ -10,7 +10,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'ai-fix-53',
+                git branch: 'master',
                     credentialsId: 'git_creds',
                     url: 'https://github.com/cloudops-lab/loginapp.git'
             }
