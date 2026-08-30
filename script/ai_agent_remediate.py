@@ -1,6 +1,7 @@
 import os
 import sys
 import subprocess
+import json
 import requests
 
 LLM_API_KEY = os.getenv("LLM_API_KEY")
@@ -21,13 +22,13 @@ Analyze the following Jenkins failure logs:
 ---
 Task:
 1. Identify the root cause.
-2. If the failure is due to a missing tool/package on Ubuntu/Debian (e.g. 'mvn: not found'), provide the exact shell command to install it.
-3. If it is a code/test failure, explain the fix.
+2. If the failure is due to a missing tool/typo (e.g. 'mvn1: not found'), provide the exact shell command to fix it.
+3. If it is a build or code failure, explain the fix.
 
 Respond ONLY in valid JSON matching this schema:
 {{
   "cause": "Short summary",
-  "missing_tool": true or false,
+  "missing_tool": true,
   "remediation_cmd": "exact bash command to fix or empty string",
   "explanation": "concise explanation"
 }}
@@ -45,20 +46,27 @@ try:
         },
         timeout=30
     )
-    
-    import json
-    result = response.json()["choices"][0]["message"]["content"]
+
+    resp_json = response.json()
+
+    # Check for API-level errors
+    if response.status_code != 200:
+        print(f"API Error ({response.status_code}): {resp_json.get('error', resp_json)}")
+        sys.exit(1)
+
+    result = resp_json["choices"][0]["message"]["content"]
     data = json.loads(result)
 
-    print("=== [AI AGENT TRIAGE] ===")
-    print(f"Cause: {data.get('cause')}")
-    print(f"Explanation: {data.get('explanation')}")
+    print("\n================ [AI AGENT TRIAGE] ================")
+    print(f"Root Cause:     {data.get('cause')}")
+    print(f"Explanation:    {data.get('explanation')}")
+    print(f"Suggested Fix:  {data.get('remediation_cmd')}")
+    print("===================================================\n")
 
     # Self-Healing Execution
     if data.get("missing_tool") and data.get("remediation_cmd"):
         cmd = data.get("remediation_cmd")
-        print(f"\n[AI Self-Healing] Executing detected fix: {cmd}")
-        # Execute the auto-fix if passwordless sudo or user permissions allow
+        print(f"[AI Self-Healing] Executing detected fix: {cmd}")
         subprocess.run(cmd, shell=True, check=False)
 
     with open("ai_triage.json", "w") as out:
