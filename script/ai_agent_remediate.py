@@ -4,14 +4,9 @@ import sys
 import json
 import re
 import requests
-import subprocess
 
 API_KEY = os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("GROQ_API_KEY")
 LOG_FILE = sys.argv[1] if len(sys.argv) > 1 else "pipeline.log"
-BRANCH_NAME = "feature/ai-auto-heal"
-
-GIT_USER = os.getenv("GIT_USER", "Chandandhani")
-GIT_PASS = os.getenv("GIT_PASS")
 
 if not API_KEY:
     print("[AI Agent Error] LLM_API_KEY environment variable is not set.")
@@ -87,10 +82,7 @@ try:
     raw_text = resp_json["choices"][0]["message"]["content"]
     
     match = re.search(r"\{.*\}", raw_text, re.DOTALL)
-    if match:
-        data = json.loads(match.group(0))
-    else:
-        data = json.loads(raw_text)
+    data = json.loads(match.group(0)) if match else json.loads(raw_text)
 
     print("\n" + "=" * 65)
     print("           🤖 AI AGENT CI/CD TRIAGE & AUTO-HEALING")
@@ -106,10 +98,7 @@ try:
     replace_str = data.get("replace_string")
 
     if os.path.exists(target_file) and search_str and replace_str:
-        print(f"[Auto-Healing] Creating feature branch '{BRANCH_NAME}'...")
-        subprocess.run(f"git checkout -B {BRANCH_NAME}", shell=True, check=True)
-
-        print(f"[Auto-Healing] Patching '{target_file}': replacing '{search_str}' with '{replace_str}'...")
+        print(f"[Auto-Healing] Patching '{target_file}'...")
         with open(target_file, "r", encoding="utf-8") as f:
             file_content = f.read()
 
@@ -121,23 +110,7 @@ try:
         with open(target_file, "w", encoding="utf-8") as f:
             f.write(patched_content)
 
-        print(f"[Auto-Healing] '{target_file}' patched successfully!")
-
-        try:
-            print(f"[Auto-Healing] Committing and pushing to origin/{BRANCH_NAME}...")
-            subprocess.run(f"git config user.name '{GIT_USER}'", shell=True, check=True)
-            subprocess.run("git config user.email 'ai-agent@cloudops.internal'", shell=True, check=True)
-
-            if GIT_PASS:
-                remote_url = f"https://{GIT_USER}:{GIT_PASS}@github.com/cloudops-lab/loginapp.git"
-                subprocess.run(f"git remote set-url origin {remote_url}", shell=True, check=True)
-
-            subprocess.run(f"git add {target_file}", shell=True, check=True)
-            subprocess.run("git commit -m 'fix(ci): autonomous patch applied by AI agent'", shell=True, check=True)
-            subprocess.run(f"git push -u origin {BRANCH_NAME} --force", shell=True, check=True)
-            print(f"[Auto-Healing] Feature branch '{BRANCH_NAME}' pushed successfully to GitHub!")
-        except Exception as ge:
-            print(f"[Auto-Healing Warning] Git push failed: {ge}")
+        print(f"[Auto-Healing] '{target_file}' patched successfully locally!")
 
     print("=" * 65 + "\n")
 
