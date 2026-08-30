@@ -1,21 +1,23 @@
+#!/usr/bin/env python3
 import os
 import sys
 import json
 import requests
 
-API_KEY = os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("GROQ_API_KEY")
 LOG_FILE = sys.argv[1] if len(sys.argv) > 1 else "pipeline.log"
 
 if not API_KEY:
-    print("[AI Agent Error] LLM_API_KEY environment variable is not set.")
+    print("[AI Agent Error] No API Key provided. Set LLM_API_KEY environment variable.")
     sys.exit(0)
 
 if not os.path.exists(LOG_FILE):
     print(f"[AI Agent Error] Log file '{LOG_FILE}' not found.")
     sys.exit(0)
 
-with open(LOG_FILE, "r") as f:
-    logs = "".join(f.readlines()[-120:])
+# Read the last 150 lines where failure stacktraces occur
+with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
+    logs = "".join(f.readlines()[-150:])
 
 prompt = f"""
 You are an expert Autonomous DevOps CI/CD AI Agent.
@@ -24,9 +26,9 @@ Analyze the following Jenkins failure logs:
 {logs}
 ---
 Instructions:
-1. Identify the primary root cause (e.g., Maven compiler error, missing package, shell typo, missing deployment repo).
-2. Explain why it failed clearly.
-3. Provide the exact step-by-step fix, including code/pom.xml changes or commands.
+1. Identify the primary root cause.
+2. Determine which layer failed (e.g., Maven/Java compiler version issue, dependency failure, typo, permission).
+3. Provide the exact step-by-step fix (exact XML snippet for pom.xml or shell commands).
 
 Respond ONLY with a valid JSON object matching this schema:
 {{
@@ -37,15 +39,34 @@ Respond ONLY with a valid JSON object matching this schema:
 }}
 """
 
-# Groq OpenAI-compatible endpoint
-url = "https://api.groq.com/openai/v1/chat/completions"
 headers = {
     "Content-Type": "application/json",
     "Authorization": f"Bearer {API_KEY}"
 }
 
+# Step 1: Detect active available model dynamically from Groq account
+candidate_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-20b"]
+selected_model = candidate_models[0]
+
+try:
+    models_resp = requests.get("https://api.groq.com/openai/v1/models", headers=headers, timeout=10)
+    if models_resp.status_code == 200:
+        available_ids = [m.get("id") for m in models_resp.json().get("data", [])]
+        for candidate in candidate_models:
+            if candidate in available_ids:
+                selected_model = candidate
+                break
+        else:
+            # Fallback to the first available text model if none matched
+            if available_ids:
+                selected_model = available_ids[0]
+except Exception:
+    selected_model = "llama-3.1-8b-instant"
+
+# Step 2: Send Triage Query
+url = "https://api.groq.com/openai/v1/chat/completions"
 payload = {
-    "model": "llama-3.1-8b-instant",
+    "model": selected_model,
     "messages": [{"role": "user", "content": prompt}],
     "response_format": {"type": "json_object"},
     "temperature": 0.1
@@ -65,14 +86,16 @@ try:
     print("\n" + "=" * 65)
     print("           🤖 AI AGENT CI/CD TRIAGE & REMEDIATION")
     print("=" * 65)
+    print(f"Model Used:       {selected_model}")
     print(f"Error Category:   {data.get('error_category')}")
     print(f"Root Cause:       {data.get('root_cause')}")
     print(f"Explanation:      {data.get('explanation')}")
     print("-" * 65)
-    print(f"Recommended Fix:\n{data.get('recommended_fix')}")
+    print("Recommended Fix:")
+    print(data.get("recommended_fix"))
     print("=" * 65 + "\n")
 
-    with open("ai_triage_report.json", "w") as out:
+    with open("ai_triage_report.json", "w", encoding="utf-8") as out:
         out.write(json.dumps(data, indent=2))
 
 except Exception as e:
