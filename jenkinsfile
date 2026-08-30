@@ -4,7 +4,7 @@ pipeline {
     }
 
     environment {
-        GEMINI_API_KEY = 'AQ.Ab8RN6IQQTdCAKVKa7scLRly3nAMlyoGw7udeB0B63jcHSm2RQ'
+        GEMINI_API_KEY = 'AQ.Ab8RN6L8AHDmiTkdVhPbQYQ73ipXdLAWgP-KRa-t2RPnI44p6Q'
     }
 
     stages {
