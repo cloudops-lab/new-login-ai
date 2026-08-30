@@ -10,6 +10,9 @@ API_KEY = os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("
 LOG_FILE = sys.argv[1] if len(sys.argv) > 1 else "pipeline.log"
 BRANCH_NAME = "feature/ai-auto-heal"
 
+GIT_USER = os.getenv("GIT_USER", "Chandandhani")
+GIT_PASS = os.getenv("GIT_PASS")
+
 if not API_KEY:
     print("[AI Agent Error] LLM_API_KEY environment variable is not set.")
     sys.exit(0)
@@ -83,7 +86,6 @@ try:
 
     raw_text = resp_json["choices"][0]["message"]["content"]
     
-    # Clean and parse JSON
     match = re.search(r"\{.*\}", raw_text, re.DOTALL)
     if match:
         data = json.loads(match.group(0))
@@ -114,7 +116,6 @@ try:
         if search_str in file_content:
             patched_content = file_content.replace(search_str, replace_str)
         else:
-            # Fallback regex replace for jdk.version 1.6 -> 1.8
             patched_content = re.sub(r"<jdk\.version>1\.[56]</jdk\.version>", "<jdk.version>1.8</jdk.version>", file_content)
 
         with open(target_file, "w", encoding="utf-8") as f:
@@ -124,8 +125,13 @@ try:
 
         try:
             print(f"[Auto-Healing] Committing and pushing to origin/{BRANCH_NAME}...")
-            subprocess.run("git config user.name 'AI Auto-Healing Agent'", shell=True, check=True)
+            subprocess.run(f"git config user.name '{GIT_USER}'", shell=True, check=True)
             subprocess.run("git config user.email 'ai-agent@cloudops.internal'", shell=True, check=True)
+
+            if GIT_PASS:
+                remote_url = f"https://{GIT_USER}:{GIT_PASS}@github.com/cloudops-lab/loginapp.git"
+                subprocess.run(f"git remote set-url origin {remote_url}", shell=True, check=True)
+
             subprocess.run(f"git add {target_file}", shell=True, check=True)
             subprocess.run("git commit -m 'fix(ci): autonomous patch applied by AI agent'", shell=True, check=True)
             subprocess.run(f"git push -u origin {BRANCH_NAME} --force", shell=True, check=True)
