@@ -26,6 +26,7 @@ workspace_context = {}
 for root, dirs, files in os.walk("."):
     if "/." in root or "/target" in root:
         continue
+    print(f"Line 29 {files}")
     for file in files:
         if file in ["Jenkinsfile", "jenkinsfile", "pom.xml"] or file.endswith((".java", ".xml")):
             rel_path = os.path.relpath(os.path.join(root, file), ".")
