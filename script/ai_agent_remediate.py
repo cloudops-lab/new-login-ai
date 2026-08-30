@@ -3,12 +3,11 @@ import sys
 import json
 import requests
 
-# Accept either variable name so it never fails
 API_KEY = os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY")
 LOG_FILE = sys.argv[1] if len(sys.argv) > 1 else "pipeline.log"
 
 if not API_KEY:
-    print("[AI Agent Error] Neither LLM_API_KEY nor GEMINI_API_KEY environment variable is set.")
+    print("[AI Agent Error] LLM_API_KEY environment variable is not set.")
     sys.exit(0)
 
 if not os.path.exists(LOG_FILE):
@@ -38,6 +37,7 @@ Respond ONLY with a valid JSON object matching this schema:
 }}
 """
 
+# Groq OpenAI-compatible endpoint
 url = "https://api.groq.com/openai/v1/chat/completions"
 headers = {
     "Content-Type": "application/json",
@@ -45,7 +45,7 @@ headers = {
 }
 
 payload = {
-    "model": "llama-3.3-70b-versatile",
+    "model": "llama-3.1-8b-instant",
     "messages": [{"role": "user", "content": prompt}],
     "response_format": {"type": "json_object"},
     "temperature": 0.1
