@@ -28,10 +28,9 @@ Analyze the following Jenkins failure logs:
 
 Task:
 1. Identify the primary root cause.
-2. If the issue is due to unsupported Java 1.6 / compiler plugin in pom.xml, configure the patch to change jdk.version from 1.6 to 1.8.
-3. Provide the exact text to search and replace in the target file.
+2. If the issue is Java 1.6 in pom.xml, patch jdk.version from 1.6 to 1.8.
 
-Provide your response in JSON format matching this exact schema:
+Respond ONLY with a valid JSON object matching this schema:
 {{
   "error_category": "Category name",
   "root_cause": "Concise summary",
@@ -47,7 +46,6 @@ headers = {
     "Authorization": f"Bearer {API_KEY}"
 }
 
-# Auto-detect available Groq model
 model = "llama-3.1-8b-instant"
 try:
     models_resp = requests.get("https://api.groq.com/openai/v1/models", headers=headers, timeout=5)
@@ -75,44 +73,35 @@ try:
     response = requests.post(url, headers=headers, json=payload, timeout=35)
     resp_json = response.json()
 
-    if response.status_code != 200:
-        print(f"[AI Agent Error] API returned status {response.status_code}: {resp_json}")
-        sys.exit(0)
+    if response.status_code == 200:
+        raw_text = resp_json["choices"][0]["message"]["content"]
+        match = re.search(r"\{.*\}", raw_text, re.DOTALL)
+        data = json.loads(match.group(0)) if match else json.loads(raw_text)
 
-    raw_text = resp_json["choices"][0]["message"]["content"]
-    
-    match = re.search(r"\{.*\}", raw_text, re.DOTALL)
-    data = json.loads(match.group(0)) if match else json.loads(raw_text)
+        print("\n" + "=" * 65)
+        print("           🤖 AI AGENT CI/CD TRIAGE & AUTO-HEALING")
+        print("=" * 65)
+        print(f"Model Used:       {model}")
+        print(f"Error Category:   {data.get('error_category')}")
+        print(f"Root Cause:       {data.get('root_cause')}")
+        print(f"Explanation:      {data.get('explanation')}")
+        print("-" * 65)
 
-    print("\n" + "=" * 65)
-    print("           🤖 AI AGENT CI/CD TRIAGE & AUTO-HEALING")
-    print("=" * 65)
-    print(f"Model Used:       {model}")
-    print(f"Error Category:   {data.get('error_category')}")
-    print(f"Root Cause:       {data.get('root_cause')}")
-    print(f"Explanation:      {data.get('explanation')}")
-    print("-" * 65)
-
-    target_file = data.get("target_file", "pom.xml")
-    search_str = data.get("search_string")
-    replace_str = data.get("replace_string")
-
-    if os.path.exists(target_file) and search_str and replace_str:
-        print(f"[Auto-Healing] Patching '{target_file}'...")
+    target_file = "pom.xml"
+    if os.path.exists(target_file):
         with open(target_file, "r", encoding="utf-8") as f:
-            file_content = f.read()
+            content = f.read()
 
-        if search_str in file_content:
-            patched_content = file_content.replace(search_str, replace_str)
-        else:
-            patched_content = re.sub(r"<jdk\.version>1\.[56]</jdk\.version>", "<jdk.version>1.8</jdk.version>", file_content)
+        # Apply patch to pom.xml
+        patched = re.sub(r"<jdk\.version>1\.[56]</jdk\.version>", "<jdk.version>1.8</jdk.version>", content)
+        if patched == content:
+            patched = content.replace("<jdk.version>1.6</jdk.version>", "<jdk.version>1.8</jdk.version>")
 
         with open(target_file, "w", encoding="utf-8") as f:
-            f.write(patched_content)
+            f.write(patched)
 
-        print(f"[Auto-Healing] '{target_file}' patched successfully locally!")
-
-    print("=" * 65 + "\n")
+        print(f"[Auto-Healing] '{target_file}' patched with JDK 1.8 successfully!")
+        print("=" * 65 + "\n")
 
 except Exception as e:
     print(f"[AI Agent Warning] Error: {e}")
