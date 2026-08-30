@@ -28,64 +28,24 @@ pipeline {
                         git config user.name "Chandandhani"
                         git config user.email "ai-agent@cloudops.internal"
 
-                        # 1. Attempt the initial build on master
+                        # 1. Attempt initial build on master
                         if mvn clean install package 2>&1 | tee pipeline.log; then
                             echo "=== BUILD SUCCEEDED ==="
                         else
                             echo "=== BUILD FAILED: CREATING FIXED FEATURE BRANCH & PR ==="
 
-                            # 2. Checkout or reset feature-ai-fix cleanly from origin/master
+                            # 2. Checkout feature branch from master
                             git checkout -B "${BRANCH_NAME}" origin/master
 
-                            # 3. Run AI agent to diagnose and patch pom.xml
+                            # 3. Patch pom.xml and call GitHub PR API directly from Python
+                            export GIT_PASS="${GIT_PASS}"
                             python3 script/ai_agent_remediate.py pipeline.log
 
-                            # 4. Commit and push the fix to feature-ai-fix
+                            # 4. Commit and push the feature branch to GitHub
                             git add pom.xml
-                            git commit -m "fix(ci): autonomous patch applied by AI agent" || echo "No new diff to commit"
+                            git commit -m "fix(ci): autonomous patch applied by AI agent" || echo "No diff to commit"
                             git push "${AUTH_REPO}" "${BRANCH_NAME}" --force
                             echo "=== PUSHED ${BRANCH_NAME} TO GITHUB ==="
-
-                            # 5. Safely generate PR JSON payload without backtick escaping conflicts
-                            cat << 'EOF' > make_pr.py
-import os
-import json
-import requests
-
-git_pass = os.getenv("GIT_PASS")
-branch_name = "feature-ai-fix"
-repo_url = "https://api.github.com/repos/cloudops-lab/new-login-ai/pulls"
-
-payload = {
-    "title": "fix(ci): Auto-healing patch (Java Version Fix)",
-    "head": branch_name,
-    "base": "master",
-    "body": "### AI Agent CI/CD Remediation\n\n- **Cause:** Maven compiler JDK compatibility error (Java 6 unsupported).\n- **Remediation:** Upgraded project jdk.version to 1.8 in pom.xml.\n\nPlease review and approve this PR."
-}
-
-headers = {
-    "Authorization": f"token {git_pass}",
-    "Accept": "application/vnd.github.v3+json"
-}
-
-try:
-    resp = requests.post(repo_url, headers=headers, json=payload, timeout=20)
-    pr_data = resp.json()
-    pr_url = pr_data.get("html_url")
-
-    print("=======================================================")
-    if pr_url:
-        print(f"PULL REQUEST READY: {pr_url}")
-    else:
-        print("Pull Request already open or updated: https://github.com/cloudops-lab/new-login-ai/pulls")
-    print("Please review and merge the PR into master.")
-    print("=======================================================")
-except Exception as e:
-    print(f"Failed to create PR: {e}")
-EOF
-
-                            # 6. Execute PR generation
-                            python3 make_pr.py
 
                             exit 1
                         fi
