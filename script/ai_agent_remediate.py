@@ -7,6 +7,8 @@ import requests
 
 API_KEY = os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("GROQ_API_KEY")
 LOG_FILE = sys.argv[1] if len(sys.argv) > 1 else "pipeline.log"
+BRANCH_NAME = "feature-ai-fix"
+GIT_PASS = os.getenv("GIT_PASS")
 
 if not API_KEY:
     print("[AI Agent Error] LLM_API_KEY environment variable is not set.")
@@ -92,7 +94,6 @@ try:
         with open(target_file, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # Apply patch to pom.xml
         patched = re.sub(r"<jdk\.version>1\.[56]</jdk\.version>", "<jdk.version>1.8</jdk.version>", content)
         if patched == content:
             patched = content.replace("<jdk.version>1.6</jdk.version>", "<jdk.version>1.8</jdk.version>")
@@ -104,4 +105,33 @@ try:
         print("=" * 65 + "\n")
 
 except Exception as e:
-    print(f"[AI Agent Warning] Error: {e}")
+    print(f"[AI Agent Warning] Log analysis error: {e}")
+
+# Create GitHub Pull Request via GitHub REST API
+if GIT_PASS:
+    repo_pr_url = "https://api.github.com/repos/cloudops-lab/new-login-ai/pulls"
+    pr_headers = {
+        "Authorization": f"token {GIT_PASS}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    pr_payload = {
+        "title": "fix(ci): Auto-healing patch (Java Version Fix)",
+        "head": BRANCH_NAME,
+        "base": "master",
+        "body": "### AI Agent CI/CD Remediation\n\n- **Cause:** Maven compiler JDK compatibility error (Java 6 unsupported).\n- **Remediation:** Upgraded project jdk.version to 1.8 in pom.xml.\n\nPlease review and approve this PR."
+    }
+
+    try:
+        pr_resp = requests.post(repo_pr_url, headers=pr_headers, json=pr_payload, timeout=20)
+        pr_data = pr_resp.json()
+        pr_url = pr_data.get("html_url")
+
+        print("=======================================================")
+        if pr_url:
+            print(f"🚀 PULL REQUEST CREATED: {pr_url}")
+        else:
+            print("ℹ️ Pull Request already exists: https://github.com/cloudops-lab/new-login-ai/pulls")
+        print("👉 Please review and merge the PR into master on GitHub.")
+        print("=======================================================\n")
+    except Exception as pe:
+        print(f"[AI Agent Warning] Failed to trigger GitHub PR: {pe}")
