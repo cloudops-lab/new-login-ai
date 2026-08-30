@@ -3,6 +3,10 @@ pipeline {
         label 'dev'
     }
 
+    environment {
+        LLM_API_KEY = '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'
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -12,26 +16,51 @@ pipeline {
             }
         }
 
-        stage('Build & Test') {
+        stage('Build & Auto-Heal') {
             steps {
-                sh '''#!/bin/bash
-                    set -o pipefail
-                    mvn clean install package 2>&1 | tee pipeline.log
-                '''
-            }
-            post {
-                failure {
+                withCredentials([usernamePassword(credentialsId: 'git_creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
                     sh '''#!/bin/bash
-                        export LLM_API_KEY="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"
-                        if [ -f pipeline.log ]; then
-                            echo "=== TRIGGERING AI AGENT FOR TRIAGE ==="
-                            python3 script/ai_agent_remediate.py pipeline.log || true
+                        set -o pipefail
+
+                        # Configure authenticated Git remote
+                        AUTH_REPO="https://${GIT_USER}:${GIT_PASS}@github.com/cloudops-lab/loginapp.git"
+                        git config user.name "Chandandhani"
+                        git config user.email "ai-agent@cloudops.internal"
+
+                        # 1. Initial Build Attempt
+                        if mvn clean install package 2>&1 | tee pipeline.log; then
+                            echo "=== BUILD SUCCEEDED ON FIRST ATTEMPT ==="
+                        else
+                            echo "=== BUILD FAILED: INITIATING AI AUTO-HEALING ==="
+
+                            # 2. Trigger AI Agent to patch pom.xml
+                            python3 script/ai_agent_remediate.py pipeline.log
+
+                            # 3. Create feature branch, commit patch, and push to GitHub
+                            git checkout -B feature/ai-auto-heal
+                            git add pom.xml
+                            git commit -m "fix(ci): autonomous patch applied by AI agent"
+                            git push "${AUTH_REPO}" feature/ai-auto-heal --force
+                            echo "=== PUSHED feature/ai-auto-heal TO GITHUB ==="
+
+                            # 4. Verify the build with the patched file
+                            echo "=== RETRYING BUILD WITH HEALED CODE ==="
+                            mvn clean install package
+
+                            # 5. Merge the fix back into master and push
+                            echo "=== MERGING HEALED BRANCH INTO MASTER ==="
+                            git checkout master
+                            git pull "${AUTH_REPO}" master
+                            git merge feature/ai-auto-heal -m "Merge branch 'feature/ai-auto-heal' (Self-healed by AI)"
+                            git push "${AUTH_REPO}" master
+                            echo "=== CHANGES SUCCESSFULLY MERGED & PUSHED TO MASTER ==="
                         fi
                     '''
                 }
             }
         }
     }
+
     post {
         always {
             cleanWs(deleteDirs: true, notFailBuild: true)
