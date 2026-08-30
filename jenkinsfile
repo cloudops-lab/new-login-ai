@@ -12,7 +12,7 @@ pipeline {
             steps {
                 git branch: 'master',
                     credentialsId: 'git_creds',
-                    url: 'https://github.com/cloudops-lab/loginapp.git'
+                    url: 'https://github.com/cloudops-lab/new-login-ai.git'
             }
         }
 
