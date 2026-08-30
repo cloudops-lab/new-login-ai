@@ -16,44 +16,60 @@ pipeline {
             }
         }
 
-        stage('Build & Auto-Heal') {
+        stage('Build & AI Auto-Healing PR') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'git_creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
                     sh '''#!/bin/bash
                         set -o pipefail
 
-                        # Configure authenticated Git remote
                         AUTH_REPO="https://${GIT_USER}:${GIT_PASS}@github.com/cloudops-lab/loginapp.git"
+                        BRANCH_NAME="ai-fix-${BUILD_NUMBER}"
+
                         git config user.name "Chandandhani"
                         git config user.email "ai-agent@cloudops.internal"
 
-                        # 1. Initial Build Attempt
+                        # 1. Attempt the build
                         if mvn clean install package 2>&1 | tee pipeline.log; then
-                            echo "=== BUILD SUCCEEDED ON FIRST ATTEMPT ==="
+                            echo "=== BUILD SUCCEEDED ==="
                         else
-                            echo "=== BUILD FAILED: INITIATING AI AUTO-HEALING ==="
+                            echo "=== BUILD FAILED: INITIATING AI AGENT AUTO-HEAL ==="
 
-                            # 2. Trigger AI Agent to patch pom.xml
+                            # 2. AI agent patches pom.xml
                             python3 script/ai_agent_remediate.py pipeline.log
 
-                            # 3. Create feature branch, commit patch, and push to GitHub
-                            git checkout -B feature/ai-auto-heal
+                            # 3. Create unique branch and push to GitHub
+                            git checkout -b "${BRANCH_NAME}"
                             git add pom.xml
-                            git commit -m "fix(ci): autonomous patch applied by AI agent"
-                            git push "${AUTH_REPO}" feature/ai-auto-heal --force
-                            echo "=== PUSHED feature/ai-auto-heal TO GITHUB ==="
+                            git commit -m "fix(ci): autonomous patch by AI agent for build #${BUILD_NUMBER}"
+                            git push "${AUTH_REPO}" "${BRANCH_NAME}" --force
+                            echo "=== PUSHED ${BRANCH_NAME} TO GITHUB ==="
 
-                            # 4. Verify the build with the patched file
-                            echo "=== RETRYING BUILD WITH HEALED CODE ==="
-                            mvn clean install package
+                            # 4. Create Pull Request on GitHub for manual approval
+                            echo "=== CREATING PULL REQUEST ON GITHUB ==="
+                            PR_PAYLOAD=$(cat <<EOF
+{
+  "title": "fix(ci): Auto-healing patch for Build #${BUILD_NUMBER}",
+  "head": "${BRANCH_NAME}",
+  "base": "master",
+  "body": "### 🤖 AI Agent CI/CD Remediation Report\\n\\n- **Cause:** Maven compiler JDK compatibility error (Java 6 unsupported).\\n- **Remediation:** Upgraded project \`<jdk.version>\` to \`1.8\` in \`pom.xml\`.\\n\\nPlease review and merge this PR."
+}
+EOF
+)
+                            PR_RESPONSE=$(curl -s -X POST \
+                              -H "Authorization: token ${GIT_PASS}" \
+                              -H "Accept: application/vnd.github.v3+json" \
+                              https://api.github.com/repos/cloudops-lab/loginapp/pulls \
+                              -d "${PR_PAYLOAD}")
 
-                            # 5. Merge the fix back into master and push
-                            echo "=== MERGING HEALED BRANCH INTO MASTER ==="
-                            git checkout master
-                            git pull "${AUTH_REPO}" master
-                            git merge feature/ai-auto-heal -m "Merge branch 'feature/ai-auto-heal' (Self-healed by AI)"
-                            git push "${AUTH_REPO}" master
-                            echo "=== CHANGES SUCCESSFULLY MERGED & PUSHED TO MASTER ==="
+                            PR_URL=$(echo "${PR_RESPONSE}" | grep -o '"html_url": *"[^"]*"' | head -n 1 | cut -d '"' -f 4)
+
+                            echo "======================================================="
+                            echo "🚀 PULL REQUEST CREATED: ${PR_URL}"
+                            echo "👉 Please visit GitHub and approve the PR to apply changes."
+                            echo "======================================================="
+                            
+                            # Mark pipeline stage failed so it requires review before moving to deploy
+                            exit 1
                         fi
                     '''
                 }
