@@ -4,7 +4,6 @@ import subprocess
 import json
 import requests
 
-# Read GEMINI_API_KEY or fallback to LLM_API_KEY
 API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("LLM_API_KEY")
 LOG_FILE = sys.argv[1] if len(sys.argv) > 1 else "pipeline.log"
 
@@ -39,7 +38,13 @@ Respond ONLY with a valid JSON object matching this schema:
 }}
 """
 
-url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+
+headers = {
+    "Content-Type": "application/json",
+    "x-goog-api-key": API_KEY,
+    "Authorization": f"Bearer {API_KEY}"
+}
 
 payload = {
     "contents": [{
@@ -52,14 +57,13 @@ payload = {
 }
 
 try:
-    response = requests.post(url, json=payload, timeout=30)
+    response = requests.post(url, headers=headers, json=payload, timeout=30)
     resp_json = response.json()
 
     if response.status_code != 200:
         print(f"Gemini API Error ({response.status_code}): {resp_json.get('error', resp_json)}")
         sys.exit(1)
 
-    # Extract JSON text from Gemini response structure
     raw_text = resp_json["candidates"][0]["content"]["parts"][0]["text"]
     data = json.loads(raw_text)
 
