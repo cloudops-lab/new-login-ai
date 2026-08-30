@@ -4,11 +4,11 @@ import subprocess
 import json
 import requests
 
-API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("LLM_API_KEY")
+API_KEY = os.getenv("GEMINI_API_KEY")
 LOG_FILE = sys.argv[1] if len(sys.argv) > 1 else "pipeline.log"
 
 if not API_KEY:
-    print("Error: Neither GEMINI_API_KEY nor LLM_API_KEY environment variable is set.")
+    print("Error: Not finding GEMINI_API_KEY API_KEY")
     sys.exit(1)
 
 if not os.path.exists(LOG_FILE):
