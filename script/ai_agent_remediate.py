@@ -7,6 +7,7 @@ import subprocess
 
 API_KEY = os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("GROQ_API_KEY")
 LOG_FILE = sys.argv[1] if len(sys.argv) > 1 else "pipeline.log"
+BRANCH_NAME = "feature/ai-auto-heal"
 
 if not API_KEY:
     print("[AI Agent Error] LLM_API_KEY environment variable is not set.")
@@ -40,7 +41,7 @@ Task:
 2. If the issue is fixable in repository files (e.g., 'pom.xml' Java version, plugin version, typo):
    - Set "can_auto_heal": true
    - Set "target_file": "pom.xml"
-   - Set "updated_file_content": full updated content for pom.xml with the fix applied (e.g. changing jdk.version from 1.6 to 1.8).
+   - Set "updated_file_content": complete corrected file content for pom.xml (e.g., upgrading jdk.version from 1.6 to 1.8 and compiler plugin).
 3. If it is a missing system package:
    - Set "can_auto_heal": true
    - Set "system_command": "sudo apt install -y ..."
@@ -62,7 +63,7 @@ headers = {
     "Authorization": f"Bearer {API_KEY}"
 }
 
-# Fetch available Groq models
+# Auto-detect available Groq model
 model = "llama-3.1-8b-instant"
 try:
     models_resp = requests.get("https://api.groq.com/openai/v1/models", headers=headers, timeout=5)
@@ -106,20 +107,22 @@ try:
         target_file = data.get("target_file")
         updated_content = data.get("updated_file_content")
         if target_file and updated_content and len(updated_content.strip()) > 20:
+            print(f"[Auto-Healing] Creating feature branch '{BRANCH_NAME}'...")
+            subprocess.run(f"git checkout -B {BRANCH_NAME}", shell=True, check=True)
+
             print(f"[Auto-Healing] Overwriting and fixing '{target_file}'...")
             with open(target_file, "w", encoding="utf-8") as tf:
                 tf.write(updated_content)
             print(f"[Auto-Healing] '{target_file}' patched successfully locally!")
 
-            # Git Auto-Commit & Push back to GitHub
             try:
-                print("[Auto-Healing] Pushing fix to remote GitHub repository...")
+                print(f"[Auto-Healing] Committing and pushing to origin/{BRANCH_NAME}...")
                 subprocess.run("git config user.name 'AI Auto-Healing Agent'", shell=True, check=True)
                 subprocess.run("git config user.email 'ai-agent@cloudops.internal'", shell=True, check=True)
                 subprocess.run(f"git add {target_file}", shell=True, check=True)
                 subprocess.run("git commit -m 'fix(ci): autonomous patch applied by AI agent'", shell=True, check=True)
-                subprocess.run("git push origin master", shell=True, check=True)
-                print("[Auto-Healing] Changes successfully pushed to GitHub!")
+                subprocess.run(f"git push -u origin {BRANCH_NAME} --force", shell=True, check=True)
+                print(f"[Auto-Healing] Feature branch '{BRANCH_NAME}' pushed successfully to GitHub!")
             except Exception as ge:
                 print(f"[Auto-Healing Warning] Git push failed: {ge}")
 
