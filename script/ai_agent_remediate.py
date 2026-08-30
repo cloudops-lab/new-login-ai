@@ -3,11 +3,12 @@ import sys
 import json
 import requests
 
-API_KEY = os.getenv("LLM_API_KEY")
+# Accept either variable name so it never fails
+API_KEY = os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY")
 LOG_FILE = sys.argv[1] if len(sys.argv) > 1 else "pipeline.log"
 
 if not API_KEY:
-    print("[AI Agent Error] LLM_API_KEY environment variable is not set.")
+    print("[AI Agent Error] Neither LLM_API_KEY nor GEMINI_API_KEY environment variable is set.")
     sys.exit(0)
 
 if not os.path.exists(LOG_FILE):
@@ -24,7 +25,7 @@ Analyze the following Jenkins failure logs:
 {logs}
 ---
 Instructions:
-1. Identify the primary root cause (e.g., Maven compiler error, missing package, shell typo).
+1. Identify the primary root cause (e.g., Maven compiler error, missing package, shell typo, missing deployment repo).
 2. Explain why it failed clearly.
 3. Provide the exact step-by-step fix, including code/pom.xml changes or commands.
 
