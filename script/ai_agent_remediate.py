@@ -4,8 +4,13 @@ import subprocess
 import json
 import requests
 
-LLM_API_KEY = os.getenv("LLM_API_KEY")
+# Read GEMINI_API_KEY or fallback to LLM_API_KEY
+API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("LLM_API_KEY")
 LOG_FILE = sys.argv[1] if len(sys.argv) > 1 else "pipeline.log"
+
+if not API_KEY:
+    print("Error: Neither GEMINI_API_KEY nor LLM_API_KEY environment variable is set.")
+    sys.exit(1)
 
 if not os.path.exists(LOG_FILE):
     print("Log file not found.")
@@ -22,10 +27,10 @@ Analyze the following Jenkins failure logs:
 ---
 Task:
 1. Identify the root cause.
-2. If the failure is due to a missing tool/typo (e.g. 'mvn1: not found'), provide the exact shell command to fix it.
-3. If it is a build or code failure, explain the fix.
+2. If the failure is due to a missing tool or typo (e.g., 'mvn1: not found'), state the fix.
+3. Provide the exact shell command to install or resolve it if applicable.
 
-Respond ONLY in valid JSON matching this schema:
+Respond ONLY with a valid JSON object matching this schema:
 {{
   "cause": "Short summary",
   "missing_tool": true,
@@ -34,28 +39,29 @@ Respond ONLY in valid JSON matching this schema:
 }}
 """
 
-try:
-    response = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {LLM_API_KEY}"},
-        json={
-            "model": "gpt-4o-mini",
-            "messages": [{"role": "user", "content": prompt}],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.1
-        },
-        timeout=30
-    )
+url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
 
+payload = {
+    "contents": [{
+        "parts": [{"text": prompt}]
+    }],
+    "generationConfig": {
+        "response_mime_type": "application/json",
+        "temperature": 0.1
+    }
+}
+
+try:
+    response = requests.post(url, json=payload, timeout=30)
     resp_json = response.json()
 
-    # Check for API-level errors
     if response.status_code != 200:
-        print(f"API Error ({response.status_code}): {resp_json.get('error', resp_json)}")
+        print(f"Gemini API Error ({response.status_code}): {resp_json.get('error', resp_json)}")
         sys.exit(1)
 
-    result = resp_json["choices"][0]["message"]["content"]
-    data = json.loads(result)
+    # Extract JSON text from Gemini response structure
+    raw_text = resp_json["candidates"][0]["content"]["parts"][0]["text"]
+    data = json.loads(raw_text)
 
     print("\n================ [AI AGENT TRIAGE] ================")
     print(f"Root Cause:     {data.get('cause')}")
@@ -63,14 +69,13 @@ try:
     print(f"Suggested Fix:  {data.get('remediation_cmd')}")
     print("===================================================\n")
 
-    # Self-Healing Execution
     if data.get("missing_tool") and data.get("remediation_cmd"):
         cmd = data.get("remediation_cmd")
         print(f"[AI Self-Healing] Executing detected fix: {cmd}")
         subprocess.run(cmd, shell=True, check=False)
 
     with open("ai_triage.json", "w") as out:
-        out.write(result)
+        out.write(raw_text)
 
 except Exception as e:
     print(f"AI Agent execution failed: {e}")
