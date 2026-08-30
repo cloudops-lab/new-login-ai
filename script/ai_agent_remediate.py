@@ -45,6 +45,7 @@ headers = {
     "Authorization": f"Bearer {API_KEY}"
 }
 
+# Auto-detect available model
 model = "llama-3.1-8b-instant"
 try:
     models_resp = requests.get("https://api.groq.com/openai/v1/models", headers=headers, timeout=5)
@@ -68,8 +69,8 @@ payload = {
     "temperature": 0.1
 }
 
-explanation_text = "Upgraded outdated compiler and war plugins in pom.xml."
-root_cause_text = "Plugin incompatibility with modern JDK."
+explanation_text = "Upgraded outdated compiler and war plugins in pom.xml to modern versions."
+root_cause_text = "Maven plugin and Java compiler incompatibility with modern runtime."
 
 try:
     response = requests.post(url, headers=headers, json=payload, timeout=35)
@@ -105,18 +106,49 @@ if os.path.exists(target_file):
     content = re.sub(r"<jdk\.version>1\.[56]</jdk\.version>", "<jdk.version>1.8</jdk.version>", content)
     content = content.replace("<jdk.version>1.6</jdk.version>", "<jdk.version>1.8</jdk.version>")
 
-    # 2. Upgrade maven-war-plugin to 3.3.2 to resolve PluginContainerException
-    content = re.sub(r"<artifactId>maven-war-plugin</artifactId>\s*<version>[^<]+</version>", 
-                     "<artifactId>maven-war-plugin</artifactId>\n\t\t\t\t<version>3.3.2</version>", content)
+    # 2. Add or update maven-war-plugin to 3.3.2
+    if "maven-war-plugin" in content:
+        if re.search(r"<artifactId>maven-war-plugin</artifactId>\s*<version>[^<]+</version>", content):
+            content = re.sub(
+                r"<artifactId>maven-war-plugin</artifactId>\s*<version>[^<]+</version>",
+                "<artifactId>maven-war-plugin</artifactId>\n\t\t\t\t<version>3.3.2</version>",
+                content
+            )
+        else:
+            content = re.sub(
+                r"(<artifactId>maven-war-plugin</artifactId>)",
+                r"\1\n\t\t\t\t<version>3.3.2</version>",
+                content
+            )
+    else:
+        war_plugin_block = """
+\t\t\t<plugin>
+\t\t\t\t<groupId>org.apache.maven.plugins</groupId>
+\t\t\t\t<artifactId>maven-war-plugin</artifactId>
+\t\t\t\t<version>3.3.2</version>
+\t\t\t</plugin>
+\t\t</plugins>"""
+        content = content.replace("</plugins>", war_plugin_block)
 
-    # 3. Upgrade maven-compiler-plugin to 3.11.0
-    content = re.sub(r"<artifactId>maven-compiler-plugin</artifactId>\s*<version>[^<]+</version>", 
-                     "<artifactId>maven-compiler-plugin</artifactId>\n\t\t\t\t<version>3.11.0</version>", content)
+    # 3. Add or update maven-compiler-plugin to 3.11.0
+    if "maven-compiler-plugin" in content:
+        if re.search(r"<artifactId>maven-compiler-plugin</artifactId>\s*<version>[^<]+</version>", content):
+            content = re.sub(
+                r"<artifactId>maven-compiler-plugin</artifactId>\s*<version>[^<]+</version>",
+                "<artifactId>maven-compiler-plugin</artifactId>\n\t\t\t\t<version>3.11.0</version>",
+                content
+            )
+        else:
+            content = re.sub(
+                r"(<artifactId>maven-compiler-plugin</artifactId>)",
+                r"\1\n\t\t\t\t<version>3.11.0</version>",
+                content
+            )
 
     with open(target_file, "w", encoding="utf-8") as f:
         f.write(content)
 
-    print(f"[Auto-Healing] '{target_file}' patched with JDK 1.8 and modern plugins successfully!")
+    print(f"[Auto-Healing] '{target_file}' patched with JDK 1.8 and updated Maven plugins successfully!")
     print("=" * 65 + "\n")
 
 # Open Pull Request via GitHub REST API
