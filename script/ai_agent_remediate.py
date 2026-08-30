@@ -38,13 +38,9 @@ Respond ONLY with a valid JSON object matching this schema:
 }}
 """
 
-url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-
-headers = {
-    "Content-Type": "application/json",
-    "x-goog-api-key": API_KEY,
-    "Authorization": f"Bearer {API_KEY}"
-}
+# Pass the key strictly in the URL query string
+url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+headers = {"Content-Type": "application/json"}
 
 payload = {
     "contents": [{
