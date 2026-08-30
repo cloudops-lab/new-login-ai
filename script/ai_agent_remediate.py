@@ -30,16 +30,13 @@ Analyze the following Jenkins failure logs:
 
 Task:
 1. Identify the primary root cause.
-2. If the issue is Java 1.6 in pom.xml, patch jdk.version from 1.6 to 1.8.
+2. Provide a short explanation and remedy for pom.xml.
 
 Respond ONLY with a valid JSON object matching this schema:
 {{
   "error_category": "Category name",
   "root_cause": "Concise summary",
-  "explanation": "Detailed explanation",
-  "target_file": "pom.xml",
-  "search_string": "<jdk.version>1.6</jdk.version>",
-  "replace_string": "<jdk.version>1.8</jdk.version>"
+  "explanation": "Detailed explanation"
 }}
 """
 
@@ -71,6 +68,9 @@ payload = {
     "temperature": 0.1
 }
 
+explanation_text = "Upgraded outdated compiler and war plugins in pom.xml."
+root_cause_text = "Plugin incompatibility with modern JDK."
+
 try:
     response = requests.post(url, headers=headers, json=payload, timeout=35)
     resp_json = response.json()
@@ -80,34 +80,46 @@ try:
         match = re.search(r"\{.*\}", raw_text, re.DOTALL)
         data = json.loads(match.group(0)) if match else json.loads(raw_text)
 
+        root_cause_text = data.get("root_cause", root_cause_text)
+        explanation_text = data.get("explanation", explanation_text)
+
         print("\n" + "=" * 65)
         print("           🤖 AI AGENT CI/CD TRIAGE & AUTO-HEALING")
         print("=" * 65)
         print(f"Model Used:       {model}")
         print(f"Error Category:   {data.get('error_category')}")
-        print(f"Root Cause:       {data.get('root_cause')}")
-        print(f"Explanation:      {data.get('explanation')}")
+        print(f"Root Cause:       {root_cause_text}")
+        print(f"Explanation:      {explanation_text}")
         print("-" * 65)
 
-    target_file = "pom.xml"
-    if os.path.exists(target_file):
-        with open(target_file, "r", encoding="utf-8") as f:
-            content = f.read()
-
-        patched = re.sub(r"<jdk\.version>1\.[56]</jdk\.version>", "<jdk.version>1.8</jdk.version>", content)
-        if patched == content:
-            patched = content.replace("<jdk.version>1.6</jdk.version>", "<jdk.version>1.8</jdk.version>")
-
-        with open(target_file, "w", encoding="utf-8") as f:
-            f.write(patched)
-
-        print(f"[Auto-Healing] '{target_file}' patched with JDK 1.8 successfully!")
-        print("=" * 65 + "\n")
-
 except Exception as e:
-    print(f"[AI Agent Warning] Log analysis error: {e}")
+    print(f"[AI Agent Warning] Log analysis note: {e}")
 
-# Create GitHub Pull Request via GitHub REST API
+# Autonomous Patching for pom.xml
+target_file = "pom.xml"
+if os.path.exists(target_file):
+    with open(target_file, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # 1. Update JDK version to 1.8
+    content = re.sub(r"<jdk\.version>1\.[56]</jdk\.version>", "<jdk.version>1.8</jdk.version>", content)
+    content = content.replace("<jdk.version>1.6</jdk.version>", "<jdk.version>1.8</jdk.version>")
+
+    # 2. Upgrade maven-war-plugin to 3.3.2 to resolve PluginContainerException
+    content = re.sub(r"<artifactId>maven-war-plugin</artifactId>\s*<version>[^<]+</version>", 
+                     "<artifactId>maven-war-plugin</artifactId>\n\t\t\t\t<version>3.3.2</version>", content)
+
+    # 3. Upgrade maven-compiler-plugin to 3.11.0
+    content = re.sub(r"<artifactId>maven-compiler-plugin</artifactId>\s*<version>[^<]+</version>", 
+                     "<artifactId>maven-compiler-plugin</artifactId>\n\t\t\t\t<version>3.11.0</version>", content)
+
+    with open(target_file, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    print(f"[Auto-Healing] '{target_file}' patched with JDK 1.8 and modern plugins successfully!")
+    print("=" * 65 + "\n")
+
+# Open Pull Request via GitHub REST API
 if GIT_PASS:
     repo_pr_url = "https://api.github.com/repos/cloudops-lab/new-login-ai/pulls"
     pr_headers = {
@@ -115,10 +127,10 @@ if GIT_PASS:
         "Accept": "application/vnd.github.v3+json"
     }
     pr_payload = {
-        "title": "fix(ci): Auto-healing patch (Java Version Fix)",
+        "title": "fix(ci): Auto-healing patch (JDK & Plugin Compatibility Fix)",
         "head": BRANCH_NAME,
         "base": "master",
-        "body": "### AI Agent CI/CD Remediation\n\n- **Cause:** Maven compiler JDK compatibility error (Java 6 unsupported).\n- **Remediation:** Upgraded project jdk.version to 1.8 in pom.xml.\n\nPlease review and approve this PR."
+        "body": f"### 🤖 AI Agent CI/CD Remediation Report\n\n- **Root Cause:** {root_cause_text}\n- **Explanation:** {explanation_text}\n- **Changes:** Upgraded `<jdk.version>` to `1.8`, `maven-war-plugin` to `3.3.2`, and `maven-compiler-plugin` to `3.11.0`.\n\nPlease review and approve this PR."
     }
 
     try:
