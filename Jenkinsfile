@@ -4,7 +4,7 @@ pipeline {
     }
 
     environment {
-        LLM_API_KEY = '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'
+        LLM_API_KEY = credentials('GroQ_Secret')
     }
 
     stages {
@@ -42,7 +42,7 @@ pipeline {
                             export BRANCH_NAME="${BRANCH_NAME}"
                             python3 script/ai_agent_remediate.py pipeline.log
 
-                            # 4. Stage and push ALL patched files (including Jenkinsfile)
+                            # 4. Stage and push ALL patched files
                             git add -A
                             git commit -m "fix(ci): autonomous patch applied by AI agent" || echo "No diff to commit"
                             git push "${AUTH_REPO}" "${BRANCH_NAME}" --force
