@@ -1,6 +1,1 @@
-# login
-
-#
-#
-####
-#######
+#This pipeline is for CI/CD along with AI agent.
